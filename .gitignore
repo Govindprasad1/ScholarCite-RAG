@@ -1,0 +1,32 @@
+# Environments
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Data (don't commit uploaded PDFs or vector DB contents)
+data/uploads/*
+!data/uploads/.gitkeep
+data/chroma_db/*
+!data/chroma_db/.gitkeep
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# LangSmith / misc caches
+.langchain/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Test/coverage
+.pytest_cache/
+.coverage
+htmlcov/
