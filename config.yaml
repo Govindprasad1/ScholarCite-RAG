@@ -49,3 +49,10 @@ vector_store:
   persist_directory: "data/chroma_db"
   collection_name: "scholarcite_chunks"
   top_k: 5
+
+llm:
+  provider: "groq"
+  generation_model: "openai/gpt-oss-120b"
+  verification_model: "openai/gpt-oss-20b"
+  temperature: 0.1
+  max_tokens: 1024
