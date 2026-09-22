@@ -1,48 +1,80 @@
 """
-STAGE 4c — Wiring the Graph
+Stage 4 — Wiring the Graph
 
-Goal: connect the nodes from nodes.py into an actual LangGraph
-StateGraph, with a conditional edge after verify_node that routes
-back to generate_node (retry) or forward to END, based on
-verification_result.
-
-Key function to build:
-
-    build_app() -> CompiledGraph
-        Compile once (e.g. at app startup), then call
-        app.invoke({"question": ..., "attempts": 0}) per user query.
+Flow:
+    START -> retrieve -> [conditional: chunks found?]
+                              |-- no  --> no_context -> END
+                              |-- yes --> generate -> verify -> decide
+                                                                  |
+                                          [conditional: verified or out of attempts?]
+                                                  |-- retry --> generate (loop)
+                                                  |-- done  --> END
 """
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
+
 from src.graph.state import GraphState
 from src.graph import nodes
-from src.utils.logger import get_logger
-
-logger = get_logger(__name__)
 
 
-def route_after_verify(state: GraphState) -> str:
-    """
-    TODO: return "generate" (retry) if verification failed and attempts
-    remain, else return "end".
-    """
-    raise NotImplementedError("Stage 4c: implement routing logic")
+def _route_after_retrieve(state: GraphState) -> str:
+    return "generate" if state["retrieved_chunks"] else "no_context"
+
+
+def _route_after_decide(state: GraphState) -> str:
+    # If decide_node didn't set final_answer, it means: retry.
+    if state.get("final_answer") is not None:
+        return "end"
+    return "retry"
 
 
 def build_app():
-    """
-    TODO (build this together):
     graph = StateGraph(GraphState)
+
     graph.add_node("retrieve", nodes.retrieve_node)
     graph.add_node("generate", nodes.generate_node)
     graph.add_node("verify", nodes.verify_node)
     graph.add_node("decide", nodes.decide_node)
+    graph.add_node("no_context", nodes.no_context_node)
 
-    graph.set_entry_point("retrieve")
-    graph.add_edge("retrieve", "generate")
+    graph.add_edge(START, "retrieve")
+
+    graph.add_conditional_edges(
+        "retrieve",
+        _route_after_retrieve,
+        {"generate": "generate", "no_context": "no_context"},
+    )
+
     graph.add_edge("generate", "verify")
-    graph.add_conditional_edges("verify", route_after_verify, {"generate": "generate", "end": "decide"})
-    graph.add_edge("decide", END)
+    graph.add_edge("verify", "decide")
+
+    graph.add_conditional_edges(
+        "decide",
+        _route_after_decide,
+        {"retry": "generate", "end": END},
+    )
+
+    graph.add_edge("no_context", END)
 
     return graph.compile()
+
+
+def run(question: str, doc_id: str, top_k: int = 5, max_attempts: int = 2) -> dict:
     """
-    raise NotImplementedError("Stage 4c: wire up the StateGraph")
+    Convenience entrypoint — builds a fresh state, invokes the compiled
+    graph, and returns the final result.
+    """
+    app = build_app()
+    initial_state: GraphState = {
+        "question": question,
+        "doc_id": doc_id,
+        "top_k": top_k,
+        "max_attempts": max_attempts,
+        "retrieved_chunks": [],
+        "answer": None,
+        "attempts": 0,
+        "verification": None,
+        "final_answer": None,
+        "status": None,
+    }
+    result = app.invoke(initial_state)
+    return result

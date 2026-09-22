@@ -11,6 +11,9 @@ from src.llm.groq_client import get_llm
 from src.retrieval.vector_store import query_similar
 from src.utils.logger import get_logger
 
+from src.llm.prompts import format_context, GENERATION_PROMPT_TEMPLATE
+
+
 logger = get_logger(__name__)
 
 
@@ -50,6 +53,13 @@ def answer_question(question: str, doc_id: str, top_k: int = 5) -> Dict[str, Any
     Full Stage 3 pipeline: retrieve relevant chunks, prompt the LLM,
     return the answer plus which chunks were used (for transparency/debugging).
     """
+
+# ... inside answer_question(), replace:
+#   context = _format_context(chunks)
+#   prompt = PROMPT_TEMPLATE.format(...)
+# with:
+    
+
     chunks = query_similar(question, top_k=top_k, doc_id=doc_id)
 
     if not chunks:
@@ -58,9 +68,10 @@ def answer_question(question: str, doc_id: str, top_k: int = 5) -> Dict[str, Any
             "source_chunks": [],
         }
 
-    context = _format_context(chunks)
-    prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+    context = format_context(chunks)
+    prompt = GENERATION_PROMPT_TEMPLATE.format(context=context, question=question)
 
+        
     llm = get_llm(role="generation")
     logger.info(f"Sending question to LLM: {question}")
     response = llm.invoke(prompt)

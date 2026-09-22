@@ -56,3 +56,7 @@ llm:
   verification_model: "openai/gpt-oss-20b"
   temperature: 0.1
   max_tokens: 1024
+
+verification:
+  max_attempts: 2          # total generate attempts before giving up and flagging
+  temperature: 0.0         # verifier should be deterministic, not creative
