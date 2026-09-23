@@ -20,25 +20,36 @@ logger = get_logger(__name__)
 
 REFUSAL_PHRASE = "I cannot answer this from the given context."
 
+from src.retrieval.hybrid import hybrid_query
 
 def retrieve_node(state: GraphState) -> dict:
-    """Fetch the top-k relevant chunks for the question, scoped to this document."""
-    chunks = query_similar(state["question"], top_k=state["top_k"], doc_id=state["doc_id"])
+    """Fetch relevant chunks using hybrid (vector + BM25 + rerank) retrieval."""
+    chunks = hybrid_query(state["question"], doc_id=state["doc_id"])
     logger.info(f"Retrieved {len(chunks)} chunks for question: {state['question']}")
     return {"retrieved_chunks": chunks}
 
-
 def generate_node(state: GraphState) -> dict:
-    """Generate an answer from the retrieved chunks. Increments the attempt counter."""
-    context = format_context(state["retrieved_chunks"])
+    attempts = state.get("attempts", 0) + 1
+
+    # On retry attempts, widen retrieval instead of reusing the same chunks —
+    # a failed verification often means the first retrieval missed the
+    # actual supporting context, not just that generation hallucinated.
+    if attempts > 1:
+        from src.retrieval.hybrid import hybrid_query
+        logger.info(f"Retry attempt {attempts}: re-retrieving with wider net")
+        wider_chunks = hybrid_query(state["question"], doc_id=state["doc_id"])
+        chunks_to_use = wider_chunks if wider_chunks else state["retrieved_chunks"]
+    else:
+        chunks_to_use = state["retrieved_chunks"]
+
+    context = format_context(chunks_to_use)
     prompt = GENERATION_PROMPT_TEMPLATE.format(context=context, question=state["question"])
 
     llm = get_llm(role="generation")
     response = llm.invoke(prompt)
-    attempts = state.get("attempts", 0) + 1
 
     logger.info(f"Generation attempt {attempts}: {response.content[:100]}...")
-    return {"answer": response.content, "attempts": attempts}
+    return {"answer": response.content, "attempts": attempts, "retrieved_chunks": chunks_to_use}
 
 
 def _parse_verification_json(raw_text: str) -> dict:

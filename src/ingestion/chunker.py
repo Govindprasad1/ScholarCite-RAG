@@ -17,10 +17,16 @@ SECTION_HEADER_PATTERN = re.compile(
     r"^\s*(?:\d+\.?\d*\.?\s+)?"
     r"(Abstract|Introduction|Related Work|Background|"
     r"Method(?:ology)?|Experiments?|Results?|Discussion|"
-    r"Conclusion|References|Acknowledge?ments?|Appendix)"
+    r"Conclusion|References|Acknowledge?ments?|Appendix|"
+    # --- added for textbooks/notes ---
+    r"Chapter\s*\d*|Unit\s*\d*|Lesson\s*\d*|Module\s*\d*|"
+    r"Overview|Summary|Key\s*Terms?|Key\s*Concepts?|Definitions?|"
+    r"Examples?|Exercises?|Review\s*Questions?|Practice\s*Problems?|"
+    r"Learning\s*Objectives?|Notes?|Recap)"
     r"\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+
 
 
 def _token_len(text: str) -> int:
@@ -31,9 +37,26 @@ def _token_len(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+GENERIC_HEADING_PATTERN = re.compile(
+    r"^\s*(?:\d+\.?\d*\.?\d*\s+)?"      # optional numbering like "1.", "2.3"
+    r"([A-Z][A-Za-z0-9\s\-:]{2,50})\s*$"  # short, capitalized standalone line
+)
+
+
 def _detect_section(text: str) -> str | None:
-    match = SECTION_HEADER_PATTERN.match(text.strip())
-    return match.group(1).title() if match else None
+    stripped = text.strip()
+    match = SECTION_HEADER_PATTERN.match(stripped)
+    if match:
+        return match.group(1).title()
+
+    # Fallback: a short, standalone, capitalized line is very likely a
+    # heading in notes/textbooks even if it's not on our known-word list
+    # (e.g. "Photosynthesis", "The French Revolution", "Newton's Laws").
+    generic_match = GENERIC_HEADING_PATTERN.match(stripped)
+    if generic_match and len(stripped.split()) <= 8 and not stripped.endswith((".", ",")):
+        return generic_match.group(1).strip()
+
+    return None
 
 
 def _split_into_sections(pages: list[dict]) -> list[dict]:
@@ -66,12 +89,23 @@ def _split_into_sections(pages: list[dict]) -> list[dict]:
 
     return [b for b in blocks if b["text"]]
 
+MIN_CHUNK_CHARS = 40  # skip chunks too short to carry meaningful content
+                       # (e.g. stray page numbers, running headers caught in isolation)
+
 
 def chunk_pages(pages: list[dict]) -> list[dict]:
     """
     Returns:
         [{"text": "...", "metadata": {"page_number": N, "section": "..."}}, ...]
+
+    Chunks shorter than MIN_CHUNK_CHARS are dropped — these are almost
+    always extraction artifacts (a lone page number, a stray header
+    fragment) rather than real content, and they pollute retrieval by
+    sometimes ranking highly on pure coincidence despite carrying no
+    useful information.
     """
+    MIN_CHUNK_CHARS = cfg["chunking"].get("min_chunk_chars", 40)
+    
     chunk_size = cfg["chunking"]["chunk_size"]
     chunk_overlap = cfg["chunking"]["chunk_overlap"]
     strategy = cfg["chunking"]["strategy"]
@@ -84,12 +118,16 @@ def chunk_pages(pages: list[dict]) -> list[dict]:
     )
 
     chunks = []
+    skipped = 0
 
     if strategy == "section_aware":
         blocks = _split_into_sections(pages)
         logger.info("Detected %d section blocks", len(blocks))
         for block in blocks:
             for sub_text in splitter.split_text(block["text"]):
+                if len(sub_text.strip()) < MIN_CHUNK_CHARS:
+                    skipped += 1
+                    continue
                 chunks.append({
                     "text": sub_text,
                     "metadata": {
@@ -100,6 +138,9 @@ def chunk_pages(pages: list[dict]) -> list[dict]:
     else:
         for page in pages:
             for sub_text in splitter.split_text(page["text"]):
+                if len(sub_text.strip()) < MIN_CHUNK_CHARS:
+                    skipped += 1
+                    continue
                 chunks.append({
                     "text": sub_text,
                     "metadata": {
@@ -108,10 +149,13 @@ def chunk_pages(pages: list[dict]) -> list[dict]:
                     },
                 })
 
+    if skipped:
+        logger.info("Skipped %d chunks shorter than %d characters (likely extraction artifacts)",
+                    skipped, MIN_CHUNK_CHARS)
+
     logger.info("Produced %d chunks (strategy=%s, chunk_size=%d tokens)",
                 len(chunks), strategy, chunk_size)
     return chunks
-
 
 if __name__ == "__main__":
     import sys

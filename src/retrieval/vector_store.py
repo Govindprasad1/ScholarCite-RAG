@@ -103,3 +103,17 @@ def delete_document(doc_id: str) -> None:
     collection = get_collection()
     collection.delete(where={"doc_id": doc_id})
     logger.info(f"Deleted all chunks for doc_id={doc_id}")
+
+def get_all_chunks_for_doc(doc_id: str) -> list[dict]:
+    """
+    Fetch every chunk belonging to a document, regardless of similarity
+    to any query — needed by BM25, which builds its index over the full
+    document rather than a pre-filtered candidate set.
+    """
+    collection = get_collection()
+    results = collection.get(where={"doc_id": doc_id})
+
+    chunks = []
+    for text, meta in zip(results["documents"], results["metadatas"]):
+        chunks.append({"text": text, "metadata": meta})
+    return chunks

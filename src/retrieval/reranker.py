@@ -1,40 +1,55 @@
 """
-STAGE 5b — Reranking (Hybrid Retrieval, part 2)
+Stage 5b — Cross-Encoder Reranking
 
-Goal: after merging vector + BM25 candidates (~30-40 chunks), use a
-cross-encoder reranker to re-score them more precisely and keep only
-the best final_top_k (config.yaml -> retrieval.final_top_k).
-
-A cross-encoder looks at (query, chunk) together — more accurate than
-the bi-encoder embedding model, but slower, which is why it's only run
-on the smaller merged candidate set, not the whole document.
-
-Key function to build:
-
-    rerank(query_text: str, candidates: list[dict], top_k: int) -> list[dict]
-
-Model: BAAI/bge-reranker-base (config.yaml -> retrieval.reranker_model)
+A bi-encoder (Stage 2's embedding model) embeds the query and each
+chunk SEPARATELY and compares vectors — fast, scalable, but less
+precise. A cross-encoder looks at the query and chunk TOGETHER in one
+pass, which is far more accurate but too slow to run over an entire
+document — which is exactly why it's only applied here, to the small
+merged candidate pool from hybrid.py, not the whole corpus.
 """
 from functools import lru_cache
+
+from sentence_transformers import CrossEncoder
+
 from src.utils.config import load_config
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
-cfg = load_config()
 
 
 @lru_cache(maxsize=1)
-def get_reranker_model():
-    """
-    TODO: from FlagEmbedding import FlagReranker
-    return FlagReranker(cfg["retrieval"]["reranker_model"], use_fp16=False)
-    """
-    raise NotImplementedError("Stage 5b: load reranker model")
+def get_reranker() -> CrossEncoder:
+    config = load_config()
+    model_name = config["retrieval"]["reranker_model"]
+    logger.info(f"Loading reranker model: {model_name}")
+    return CrossEncoder(model_name)
 
 
-def rerank(query_text: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
+def rerank(question: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
     """
-    TODO: score each (query_text, candidate["text"]) pair with the reranker,
-    sort descending, return top_k candidates.
+    Re-score a candidate pool with the cross-encoder and return the
+    top_k best, most relevant chunks.
+
+    Note: BAAI/bge-reranker-base's CrossEncoder already applies a
+    sigmoid activation internally, so model.predict() returns scores
+    already in a 0-1 relevance range — no manual activation needed
+    here. (Confirmed by diagnostic: raw outputs were already small
+    positive decimals, not unbounded logits.)
     """
-    raise NotImplementedError("Stage 5b: implement reranking")
+    if not candidates:
+        return []
+
+    model = get_reranker()
+    pairs = [(question, c["text"]) for c in candidates]
+    scores = model.predict(pairs)
+
+    scored = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
+    top = scored[:top_k]
+
+    reranked = []
+    for chunk, score in top:
+        chunk_copy = dict(chunk)
+        chunk_copy["rerank_score"] = float(score)
+        reranked.append(chunk_copy)
+    return reranked

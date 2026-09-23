@@ -81,3 +81,43 @@ def test_delete_document_removes_chunks(sample_chunks, isolated_vector_store):
     vs.delete_document("doc_to_delete")
     results = vs.query_similar("anything", top_k=5, doc_id="doc_to_delete")
     assert len(results) == 0
+from src.retrieval.bm25_search import bm25_query
+from src.retrieval.reranker import rerank
+from src.retrieval.hybrid import hybrid_query, _reciprocal_rank_fusion
+
+
+def test_bm25_finds_exact_term_match(sample_chunks, isolated_vector_store):
+    vs.add_chunks(sample_chunks, doc_id="sample_doc")
+    # "0.91" is an exact figure only in the Experiments section — a good
+    # test of BM25's strength (exact numeric/token match) vs. pure semantic search.
+    results = bm25_query("0.91", doc_id="sample_doc", top_k=3)
+    assert len(results) > 0
+    assert any("0.91" in r["text"] for r in results)
+
+
+def test_reranker_reorders_by_relevance(sample_chunks, isolated_vector_store):
+    vs.add_chunks(sample_chunks, doc_id="sample_doc")
+    candidates = vs.query_similar("What method was used?", top_k=5, doc_id="sample_doc")
+    reranked = rerank("What method was used?", candidates, top_k=3)
+    assert len(reranked) <= 3
+    assert all("rerank_score" in r for r in reranked)
+
+
+def test_reciprocal_rank_fusion_favors_chunks_in_both_lists():
+    chunk_a = {"text": "chunk A", "metadata": {"page_number": 1, "section": "X"}}
+    chunk_b = {"text": "chunk B", "metadata": {"page_number": 2, "section": "Y"}}
+    chunk_c = {"text": "chunk C", "metadata": {"page_number": 3, "section": "Z"}}
+
+    vector_results = [chunk_a, chunk_b]  # A ranked 1st, B ranked 2nd
+    bm25_results = [chunk_b, chunk_c]    # B ranked 1st, C ranked 2nd
+
+    merged = _reciprocal_rank_fusion(vector_results, bm25_results, k=60)
+    # B appears highly ranked in BOTH lists, so it should come out on top
+    assert merged[0]["text"] == "chunk B"
+
+
+def test_hybrid_query_returns_final_top_k(sample_chunks, isolated_vector_store):
+    vs.add_chunks(sample_chunks, doc_id="sample_doc")
+    results = hybrid_query("What did the experiments show?", doc_id="sample_doc")
+    assert len(results) > 0
+    assert len(results) <= 5  # final_top_k from config.yaml
