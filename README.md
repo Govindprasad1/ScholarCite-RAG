@@ -1,4 +1,5 @@
 # ScholarCite RAG
+![CI](https://github.com/Govindprasad1/ScholarCite-RAG/actions/workflows/ci.yml/badge.svg)
 
 **A Citation-Grounded RAG Assistant for Academic Documents**
 
