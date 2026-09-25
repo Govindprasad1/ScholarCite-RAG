@@ -123,9 +123,9 @@ def _is_plausible_heading(
         return False
 
     if len(words) <= 2:
-        MIN_ABSOLUTE_OCCURRENCES = 5   # word must appear at least this many times...
-        FREQ_RATIO_THRESHOLD = 0.0015  # ...AND exceed this ratio of total vocabulary
-
+        cfg_chunking = cfg["chunking"]
+        MIN_ABSOLUTE_OCCURRENCES = cfg_chunking.get("heading_min_absolute_occurrences", 5)
+        FREQ_RATIO_THRESHOLD = cfg_chunking.get("heading_freq_ratio_threshold", 0.0015)
         for w in words:
             clean = w.strip(":,").lower()
             if not clean:

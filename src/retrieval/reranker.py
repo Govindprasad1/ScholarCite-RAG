@@ -51,8 +51,9 @@ def rerank(question: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
     # Reranker carries most of the weight since it's shown strong,
     # confident discrimination on real test cases; RRF acts only as a
     # light tiebreaker/safety net.
-    RERANK_WEIGHT = 0.85
-    RRF_WEIGHT = 0.15
+    config = load_config()
+    RERANK_WEIGHT = config["retrieval"].get("rerank_weight", 0.85)
+    RRF_WEIGHT = config["retrieval"].get("rrf_weight", 0.15)
 
     combined = []
     for candidate, r_score, norm_rerank, norm_rrf in zip(candidates, raw_scores, normalized_rerank, normalized_rrf):

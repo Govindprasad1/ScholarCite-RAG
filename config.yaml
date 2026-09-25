@@ -1,12 +1,25 @@
 # Central configuration for the pipeline.
 # Change values here instead of hardcoding them in code — this also
 # doubles as the "experiment config" logged to MLflow for each run.
+
 chunking:
   chunk_size: 300
   chunk_overlap: 50
   strategy: "section_aware"
-  min_chunk_chars: 40   # lower this (e.g. to 15-20) for flashcard-style notes
+  min_chunk_chars: 40
+  heading_min_absolute_occurrences: 5
+  heading_freq_ratio_threshold: 0.0015
 
+retrieval:
+  use_hybrid: true
+  use_reranker: true
+  vector_top_k: 15
+  bm25_top_k: 15
+  final_top_k: 6
+  rrf_k: 60
+  local_reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  rerank_weight: 0.85
+  rrf_weight: 0.15
 
 embedding:
   model_name: "BAAI/bge-small-en-v1.5"
@@ -55,11 +68,3 @@ verification:
   max_attempts: 2          # total generate attempts before giving up and flagging
   temperature: 0.0         # verifier should be deterministic, not creative
 
-retrieval:
-  use_hybrid: true
-  use_reranker: true
-  vector_top_k: 15        # candidates pulled from vector search before merging
-  bm25_top_k: 15           # candidates pulled from BM25 before merging
-  final_top_k: 6           # what actually gets returned after reranking
-  rrf_k: 60                # standard RRF smoothing constant (60 is the widely-used default)
-  local_reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
