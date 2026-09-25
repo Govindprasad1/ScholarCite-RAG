@@ -3871,6 +3871,7 @@ dependencies = [
     { name = "rank-bm25" },
     { name = "sentence-transformers" },
     { name = "streamlit" },
+    { name = "tenacity" },
     { name = "torch" },
 ]
 
@@ -3901,6 +3902,7 @@ requires-dist = [
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "sentence-transformers", specifier = ">=6.0.1" },
     { name = "streamlit", specifier = ">=1.63.0" },
+    { name = "tenacity", specifier = ">=9.1.4" },
     { name = "torch", specifier = ">=2.14.0" },
 ]
 

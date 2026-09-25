@@ -7,7 +7,7 @@ baseline to prove the whole chain works before adding complexity.
 """
 from typing import Dict, Any
 
-from src.llm.groq_client import get_llm
+from src.llm.groq_client import get_llm, invoke_with_retry
 from src.retrieval.vector_store import query_similar
 from src.utils.logger import get_logger
 
@@ -74,7 +74,7 @@ def answer_question(question: str, doc_id: str, top_k: int = 5) -> Dict[str, Any
         
     llm = get_llm(role="generation")
     logger.info(f"Sending question to LLM: {question}")
-    response = llm.invoke(prompt)
+    response = invoke_with_retry(llm, prompt)
 
     return {
         "answer": response.content,

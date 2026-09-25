@@ -19,6 +19,10 @@ deprecated in 2026) — if you hit a `model_not_found` error, run
 API key, then update the model names in config.yaml accordingly. No
 code changes are needed here when that happens.
 """
+
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+from groq import RateLimitError
+
 import os
 from functools import lru_cache
 
@@ -80,3 +84,17 @@ def get_llm(role: str = "generation") -> ChatGroq:
         max_tokens=llm_config["max_tokens"],
         api_key=api_key,
     )
+@retry(
+    retry=retry_if_exception_type(RateLimitError),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(4),
+)
+def invoke_with_retry(llm, prompt: str):
+    """
+    Wraps llm.invoke() with exponential backoff specifically for Groq's
+    rate-limit errors (429s). Waits 2s, then 4s, then 8s... up to 4
+    total attempts before giving up. This matters because Groq's free
+    tier has real per-minute/per-day request caps — without this, a
+    demo could crash mid-session just from normal testing traffic.
+    """
+    return llm.invoke(prompt)

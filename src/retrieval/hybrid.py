@@ -28,12 +28,14 @@ def _chunk_key(chunk: dict) -> tuple:
     meta = chunk["metadata"]
     return (meta["page_number"], meta["section"], chunk["text"])
 
-
 def _reciprocal_rank_fusion(vector_results: list[dict], bm25_results: list[dict], k: int = 60) -> list[dict]:
     """
     RRF score for a chunk = sum over each list it appears in of
-    1 / (k + rank). Chunks appearing highly ranked in BOTH lists score
-    highest; a chunk only in one list still gets credit, just less.
+    1 / (k + rank). The score is attached as "rrf_score" so it can
+    optionally be blended with the reranker's score later — a safety
+    net in case a future reranker/document combination produces a
+    weak or ambiguous top score, even though our current model
+    (ms-marco-MiniLM-L-6-v2) has shown strong, confident separation.
     """
     scores: dict[tuple, float] = {}
     chunk_lookup: dict[tuple, dict] = {}
@@ -49,8 +51,13 @@ def _reciprocal_rank_fusion(vector_results: list[dict], bm25_results: list[dict]
         chunk_lookup[key] = chunk
 
     merged = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return [chunk_lookup[key] for key, _ in merged]
 
+    result = []
+    for key, rrf_score in merged:
+        chunk_copy = dict(chunk_lookup[key])
+        chunk_copy["rrf_score"] = rrf_score
+        result.append(chunk_copy)
+    return result
 
 def hybrid_query(question: str, doc_id: str) -> list[dict]:
     """

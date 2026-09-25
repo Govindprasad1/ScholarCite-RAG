@@ -2,7 +2,7 @@
 # Change values here instead of hardcoding them in code — this also
 # doubles as the "experiment config" logged to MLflow for each run.
 chunking:
-  chunk_size: 500
+  chunk_size: 300
   chunk_overlap: 50
   strategy: "section_aware"
   min_chunk_chars: 40   # lower this (e.g. to 15-20) for flashcard-style notes
@@ -16,13 +16,6 @@ vector_store:
   persist_directory: "data/chroma_db"
   collection_name: "research_papers"
 
-retrieval:
-  vector_top_k: 20
-  bm25_top_k: 20
-  final_top_k: 5
-  use_hybrid: true
-  use_reranker: true
-  reranker_model: "BAAI/bge-reranker-base"
 
 llm:
   provider: "groq"              # "groq" or "ollama"
@@ -67,6 +60,6 @@ retrieval:
   use_reranker: true
   vector_top_k: 15        # candidates pulled from vector search before merging
   bm25_top_k: 15           # candidates pulled from BM25 before merging
-  final_top_k: 5           # what actually gets returned after reranking
+  final_top_k: 6           # what actually gets returned after reranking
   rrf_k: 60                # standard RRF smoothing constant (60 is the widely-used default)
-  reranker_model: "BAAI/bge-reranker-base"
+  local_reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"

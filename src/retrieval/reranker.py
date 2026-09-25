@@ -21,35 +21,51 @@ logger = get_logger(__name__)
 @lru_cache(maxsize=1)
 def get_reranker() -> CrossEncoder:
     config = load_config()
-    model_name = config["retrieval"]["reranker_model"]
+    model_name = config["retrieval"]["local_reranker_model"]
     logger.info(f"Loading reranker model: {model_name}")
-    return CrossEncoder(model_name)
+    return CrossEncoder(model_name, max_length=512)
 
+import math
 
 def rerank(question: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
     """
-    Re-score a candidate pool with the cross-encoder and return the
-    top_k best, most relevant chunks.
-
-    Note: BAAI/bge-reranker-base's CrossEncoder already applies a
-    sigmoid activation internally, so model.predict() returns scores
-    already in a 0-1 relevance range — no manual activation needed
-    here. (Confirmed by diagnostic: raw outputs were already small
-    positive decimals, not unbounded logits.)
+    Re-score candidates with the cross-encoder, then blend with the
+    original RRF score as a safety net. ms-marco-MiniLM outputs
+    unbounded logits (can be strongly positive or negative), so we
+    pass them through a sigmoid to normalize into 0-1 before blending
+    with RRF's naturally small fractional scores — otherwise the two
+    scales would be incomparable.
     """
     if not candidates:
         return []
 
     model = get_reranker()
     pairs = [(question, c["text"]) for c in candidates]
-    scores = model.predict(pairs)
+    raw_scores = model.predict(pairs)
+    normalized_rerank = [1 / (1 + math.exp(-s)) for s in raw_scores]
 
-    scored = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
-    top = scored[:top_k]
+    rrf_scores = [c.get("rrf_score", 0.0) for c in candidates]
+    max_rrf = max(rrf_scores) if rrf_scores else 1.0
+    normalized_rrf = [s / max_rrf if max_rrf > 0 else 0.0 for s in rrf_scores]
+
+    # Reranker carries most of the weight since it's shown strong,
+    # confident discrimination on real test cases; RRF acts only as a
+    # light tiebreaker/safety net.
+    RERANK_WEIGHT = 0.85
+    RRF_WEIGHT = 0.15
+
+    combined = []
+    for candidate, r_score, norm_rerank, norm_rrf in zip(candidates, raw_scores, normalized_rerank, normalized_rrf):
+        blended = (RERANK_WEIGHT * norm_rerank) + (RRF_WEIGHT * norm_rrf)
+        combined.append((candidate, r_score, blended))
+
+    combined.sort(key=lambda x: x[2], reverse=True)
+    top = combined[:top_k]
 
     reranked = []
-    for chunk, score in top:
-        chunk_copy = dict(chunk)
-        chunk_copy["rerank_score"] = float(score)
+    for candidate, r_score, blended in top:
+        chunk_copy = dict(candidate)
+        chunk_copy["rerank_score"] = float(r_score)
+        chunk_copy["combined_score"] = float(blended)
         reranked.append(chunk_copy)
     return reranked

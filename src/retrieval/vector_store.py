@@ -64,6 +64,10 @@ def add_chunks(chunks: List[Dict[str, Any]], doc_id: str) -> int:
         metadatas=metadatas,
     )
     logger.info(f"Added {len(chunks)} chunks to vector store for doc_id={doc_id}")
+
+    from src.retrieval.bm25_search import invalidate_bm25_cache
+    invalidate_bm25_cache()
+
     return len(chunks)
 
 
@@ -103,6 +107,10 @@ def delete_document(doc_id: str) -> None:
     collection = get_collection()
     collection.delete(where={"doc_id": doc_id})
     logger.info(f"Deleted all chunks for doc_id={doc_id}")
+
+    from src.retrieval.bm25_search import invalidate_bm25_cache
+    invalidate_bm25_cache()
+
 
 def get_all_chunks_for_doc(doc_id: str) -> list[dict]:
     """

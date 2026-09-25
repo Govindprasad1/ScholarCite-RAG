@@ -8,6 +8,7 @@ decide_node either finalizes the answer, or (via the conditional edge
 wired in build_graph.py) sends the flow back to generate_node for
 another attempt, up to max_attempts.
 """
+from src.llm.groq_client import get_llm, invoke_with_retry
 import json
 
 from src.graph.state import GraphState
@@ -27,16 +28,19 @@ def retrieve_node(state: GraphState) -> dict:
     chunks = hybrid_query(state["question"], doc_id=state["doc_id"])
     logger.info(f"Retrieved {len(chunks)} chunks for question: {state['question']}")
     return {"retrieved_chunks": chunks}
-
 def generate_node(state: GraphState) -> dict:
+    """
+    Generate an answer from the retrieved chunks. On retry attempts
+    (attempts > 1), re-retrieves with a fresh hybrid search instead of
+    reusing the same chunks — a failed verification often means the
+    first retrieval missed the actual supporting context, not just
+    that generation hallucinated from good context.
+    """
     attempts = state.get("attempts", 0) + 1
 
-    # On retry attempts, widen retrieval instead of reusing the same chunks —
-    # a failed verification often means the first retrieval missed the
-    # actual supporting context, not just that generation hallucinated.
     if attempts > 1:
         from src.retrieval.hybrid import hybrid_query
-        logger.info(f"Retry attempt {attempts}: re-retrieving with wider net")
+        logger.info(f"Retry attempt {attempts}: re-retrieving with a fresh search")
         wider_chunks = hybrid_query(state["question"], doc_id=state["doc_id"])
         chunks_to_use = wider_chunks if wider_chunks else state["retrieved_chunks"]
     else:
@@ -46,11 +50,10 @@ def generate_node(state: GraphState) -> dict:
     prompt = GENERATION_PROMPT_TEMPLATE.format(context=context, question=state["question"])
 
     llm = get_llm(role="generation")
-    response = llm.invoke(prompt)
+    response = invoke_with_retry(llm, prompt)
 
     logger.info(f"Generation attempt {attempts}: {response.content[:100]}...")
     return {"answer": response.content, "attempts": attempts, "retrieved_chunks": chunks_to_use}
-
 
 def _parse_verification_json(raw_text: str) -> dict:
     """
@@ -92,7 +95,7 @@ def verify_node(state: GraphState) -> dict:
     prompt = VERIFICATION_PROMPT_TEMPLATE.format(context=context, answer=answer)
 
     llm = get_llm(role="verification")
-    response = llm.invoke(prompt)
+    response = invoke_with_retry(llm, prompt)
     result = _parse_verification_json(response.content)
 
     logger.info(f"Verification result: all_supported={result.get('all_supported')}, "
