@@ -1,0 +1,42 @@
+[
+  {
+    "question": "How many attention heads are used in the base Transformer model?",
+    "reference": "The base Transformer model uses 8 parallel attention heads."
+  },
+  {
+    "question": "What optimizer did they use for training?",
+    "reference": "They used the Adam optimizer with beta1 = 0.9, beta2 = 0.98, and epsilon = 10^-9."
+  },
+  {
+    "question": "How many warmup steps were used for the learning rate schedule?",
+    "reference": "They used 4000 warmup steps."
+  },
+  {
+    "question": "What was the BLEU score achieved on the WMT 2014 English-to-German task by the big Transformer model?",
+    "reference": "The big Transformer model achieved a BLEU score of 28.4 on the WMT 2014 English-to-German task."
+  },
+  {
+    "question": "How many layers are in the encoder stack?",
+    "reference": "The encoder is composed of a stack of 6 identical layers."
+  },
+  {
+    "question": "What dimensionality is used for the model's embeddings and sub-layer outputs?",
+    "reference": "The model uses a dimensionality of 512 for embeddings and sub-layer outputs."
+  },
+  {
+    "question": "What dataset was used for the English-to-German translation training?",
+    "reference": "They used the WMT 2014 English-German dataset, consisting of about 4.5 million sentence pairs."
+  },
+  {
+    "question": "What is the capital of France?",
+    "reference": "This information is not present in the document."
+  },
+  {
+    "question": "What does BLEU measure?",
+    "reference": "This information is not present in the document."
+  },
+  {
+    "question": "How many GPUs were used to train the models?",
+    "reference": "They trained on one machine with 8 NVIDIA P100 GPUs."
+  }
+]

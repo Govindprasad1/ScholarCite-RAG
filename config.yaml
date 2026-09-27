@@ -11,7 +11,7 @@ chunking:
   heading_freq_ratio_threshold: 0.0015
 
 retrieval:
-  use_hybrid: true
+  use_hybrid: False
   use_reranker: true
   vector_top_k: 15
   bm25_top_k: 15
@@ -42,8 +42,8 @@ verification:
   verifier_model_name: "llama-3.1-8b-instant"  # cheaper/faster model for verification calls
 
 mlflow:
+  tracking_uri: "sqlite:///mlflow.db"
   experiment_name: "scholarcite-rag"
-  tracking_uri: "./mlruns"
 
 app:
   title: "ScholarCite-RAG"
