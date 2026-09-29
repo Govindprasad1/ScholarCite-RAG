@@ -11,7 +11,7 @@ chunking:
   heading_freq_ratio_threshold: 0.0015
 
 retrieval:
-  use_hybrid: False
+  use_hybrid: true
   use_reranker: true
   vector_top_k: 15
   bm25_top_k: 15

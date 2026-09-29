@@ -21,6 +21,12 @@ from src.ingestion.chunker import chunk_pages
 from src.retrieval.vector_store import add_chunks, delete_document
 from src.eval.ragas_eval import run_evaluation
 from src.eval.mlflow_tracking import log_run
+from src.utils.config import load_config
+
+import sys
+
+# Use a smaller subset for quick comparison experiments; full set for final numbers
+LIMIT = int(sys.argv[2]) if len(sys.argv) > 2 else None
 
 if len(sys.argv) < 2:
     print("Usage: uv run python notebooks/run_stage7_eval.py <path_to_pdf>")
@@ -34,7 +40,7 @@ chunks = chunk_pages(pages)
 add_chunks(chunks, doc_id=doc_id)
 print(f"Indexed {len(chunks)} chunks.\n")
 
-scores, df = run_evaluation(doc_id)
+scores, df = run_evaluation(doc_id, limit=LIMIT)
 
 print("\n=== AGGREGATE RAGAS SCORES ===")
 for k, v in scores.items():
@@ -44,8 +50,13 @@ for k, v in scores.items():
         print(f"  {k}: {v:.3f}")
     else:
         print(f"  {k}: {v}")
-
-log_run(scores, run_name="baseline_chunk300_hybrid_on")
+config_for_naming = load_config()
+run_name = (
+    f"chunk{config_for_naming['chunking']['chunk_size']}"
+    f"_hybrid{'on' if config_for_naming['retrieval']['use_hybrid'] else 'off'}"
+    f"_rerank{'on' if config_for_naming['retrieval']['use_reranker'] else 'off'}"
+)
+log_run(scores, run_name=run_name)
 
 delete_document(doc_id)
 print("\nLogged to MLflow. Run 'mlflow ui' to view the dashboard.")

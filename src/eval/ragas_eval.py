@@ -44,13 +44,15 @@ def load_eval_questions() -> list[dict]:
         return json.load(f)
 
 
-def collect_samples(doc_id: str) -> list[SingleTurnSample]:
+def collect_samples(doc_id: str, limit: int = None) -> list[SingleTurnSample]:
     """
     Runs the real pipeline for every question in the test set and builds
     Ragas SingleTurnSamples from the actual retrieved context + answer —
     this evaluates your ACTUAL system behavior, not a mocked shortcut.
     """
     questions = load_eval_questions()
+    if limit:
+        questions = questions[:limit]
     #questions = questions[:3]  # uncomment to test with fewer questions first
     samples = []
 
@@ -73,9 +75,15 @@ def collect_samples(doc_id: str) -> list[SingleTurnSample]:
 
 from ragas.run_config import RunConfig
 
-def run_evaluation(doc_id: str) -> dict:
-    samples = collect_samples(doc_id)
+def run_evaluation(doc_id: str, limit: int = None) -> dict:
+    """
+    Runs Ragas evaluation across the full test set (or a subset, if
+    limit is given) and returns aggregate scores as a plain dict,
+    ready to log to MLflow.
+    """
+    samples = collect_samples(doc_id, limit=limit)
     dataset = EvaluationDataset(samples=samples)
+    # ... rest of the function stays exactly the same
 
     generation_llm = get_llm(role="generation")
     judge_llm = LangchainLLMWrapper(generation_llm)
