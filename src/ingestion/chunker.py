@@ -167,7 +167,6 @@ def _detect_section(
 
     return None
 
-
 def _split_into_sections(pages: list[dict]) -> list[dict]:
     word_freq = _build_word_frequencies(pages)
     total_words = sum(word_freq.values())
@@ -188,15 +187,38 @@ def _split_into_sections(pages: list[dict]) -> list[dict]:
                 "page_number": current_page,
             })
 
+    def ends_with_colon() -> bool:
+        """
+        If the current block's last substantive line ends with ':', it's
+        very likely introducing a list — splitting here would sever the
+        list's introduction from its own content. Page-footer numbers
+        (a lone digit from PDF pagination) are skipped when looking for
+        this "last substantive line", since they'd otherwise sit between
+        the colon and the real next heading and defeat this check.
+        """
+        for line in reversed(current_text_lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.isdigit():
+                continue  # skip page-footer numbers
+            return stripped.endswith(":")
+        return False
+
     for page in pages:
         for line in page["text"].split("\n"):
             detected = _detect_section(line, prev_line, prev_was_heading, word_freq, total_words)
+
             if detected:
-                flush()
-                current_section = detected
-                current_text_lines = []
-                current_page = page["page_number"]
-                prev_was_heading = True
+                if ends_with_colon():
+                    current_text_lines.append(line)
+                    prev_was_heading = False
+                else:
+                    flush()
+                    current_section = detected
+                    current_text_lines = []
+                    current_page = page["page_number"]
+                    prev_was_heading = True
             else:
                 if not current_text_lines:
                     current_page = page["page_number"]

@@ -27,6 +27,8 @@ RULES:
 - After every claim, cite its source like this: [Page X, Section: Y]
 - If the excerpts do not contain enough information to answer, say exactly: "I cannot answer this from the given context."
 - Do not guess or fill in gaps with assumptions.
+- CRITICAL: Never state a specific number, name, or value unless it appears EXACTLY as written in the excerpts below. If you are extracting a list of values from a table, double-check each one is literally present in the excerpt text before including it. If you are unsure whether a value is genuinely in the excerpts, omit it rather than guess.
+- Prefer plain prose or simple bullet points over markdown tables. Tables are more likely to be cut off if the answer is long, which produces broken, unreadable output.
 
 DOCUMENT EXCERPTS:
 {context}
