@@ -21,7 +21,6 @@ def _route_after_retrieve(state: GraphState) -> str:
 
 
 def _route_after_decide(state: GraphState) -> str:
-    # If decide_node didn't set final_answer, it means: retry.
     if state.get("final_answer") is not None:
         return "end"
     return "retry"
@@ -58,13 +57,8 @@ def build_app():
     return graph.compile()
 
 
-def run(question: str, doc_id: str, top_k: int = 5, max_attempts: int = 2) -> dict:
-    """
-    Convenience entrypoint — builds a fresh state, invokes the compiled
-    graph, and returns the final result.
-    """
-    app = build_app()
-    initial_state: GraphState = {
+def _initial_state(question: str, doc_id: str, top_k: int, max_attempts: int) -> GraphState:
+    return {
         "question": question,
         "doc_id": doc_id,
         "top_k": top_k,
@@ -76,5 +70,42 @@ def run(question: str, doc_id: str, top_k: int = 5, max_attempts: int = 2) -> di
         "final_answer": None,
         "status": None,
     }
-    result = app.invoke(initial_state)
-    return result
+
+
+def run(question: str, doc_id: str, top_k: int = 5, max_attempts: int = 2) -> dict:
+    """
+    Convenience entrypoint — builds a fresh state, invokes the compiled
+    graph, and returns the final result. Use this when you don't need
+    intermediate progress (e.g. in scripts, tests, evaluation).
+    """
+    app = build_app()
+    initial_state = _initial_state(question, doc_id, top_k, max_attempts)
+    return app.invoke(initial_state)
+
+
+def stream_run(question: str, doc_id: str, top_k: int = 5, max_attempts: int = 2):
+    """
+    Generator version of run() — yields (node_name, accumulated_state)
+    after EACH node finishes, instead of only returning the final
+    result. This is what powers the live pipeline visualization: the
+    UI can react to retrieval completing, then generation, then
+    verification, as they genuinely happen — not a simulated delay.
+
+    Usage:
+        for node_name, state in stream_run(question, doc_id):
+            ... update UI based on node_name and state ...
+        final_state = state  # last yielded state is the final one
+    """
+    app = build_app()
+    state = _initial_state(question, doc_id, top_k, max_attempts)
+
+    for event in app.stream(state, stream_mode="updates"):
+        for node_name, node_output in event.items():
+            if node_output is None:
+                # LangGraph can occasionally emit a None update during
+                # certain internal transitions (e.g. retry loops) —
+                # dict.update(None) would crash with "'NoneType' object
+                # is not iterable", so skip it rather than updating.
+                continue
+            state.update(node_output)
+            yield node_name, dict(state)
