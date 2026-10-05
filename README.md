@@ -1,107 +1,153 @@
+<!-- ============================================================= -->
+<!-- Paste everything below into your repo's README.md            -->
+<!-- ============================================================= -->
+
 # ScholarCite RAG
+### A Citation-Grounded, Self-Verifying RAG Assistant for Academic Documents
+
 ![CI](https://github.com/Govindprasad1/ScholarCite-RAG/actions/workflows/ci.yml/badge.svg)
 
-**A Citation-Grounded RAG Assistant for Academic Documents**
+Upload a research paper, textbook chapter, or set of notes and ask it
+questions. Every answer is generated strictly from the document,
+cited down to the exact page and section, and **independently
+fact-checked** by a second verification pass before you ever see
+it — built end-to-end on a free, open-source stack.
 
-Answers questions about research papers, textbooks, and other academic
-PDFs with **page/section-level citations**, and **rejects claims it
-can't verify** against the source document — built on a fully
-free/open-source stack.
+## 🔗 Live Demo
+**AWS EC2**: `http://<your-ec2-public-ip>:8501`
 
-> 🚧 This repo is currently a scaffold. Modules contain docstrings and
-> `TODO`s describing exactly what to build at each stage. See
-> `scholarcite-rag-architecture.md` for the full system design.
+> Deployed on AWS EC2 (`t3.small`, 2GB RAM) rather than HuggingFace
+> Spaces or Streamlit Community Cloud, after evaluating both: HF now
+> requires a paid tier for Docker/Gradio hosting, and Streamlit
+> Cloud's 1GB RAM guarantee is tight for this app's embedding +
+> reranker memory footprint. See [Known Limitations](#known-limitations).
 
-## Tech Stack
-- **Ingestion**: PyMuPDF
-- **Embeddings**: `BAAI/bge-small-en-v1.5` (local, free)
-- **Vector Store**: ChromaDB
-- **Hybrid Retrieval**: Vector search + BM25 + `bge-reranker-base`
-- **Orchestration**: LangGraph (retrieve → generate → verify → decide)
-- **LLM**: Groq (free tier, Llama 3.x)
-- **Evaluation**: LangSmith
-- **Experiment Tracking**: MLflow
-- **UI**: Streamlit
-- **MLOps**: Docker, GitHub Actions CI, pytest
+---
+
+## Why this is different from "chat with your PDF"
+
+Most RAG demos trust the LLM's first answer. This one doesn't:
+
+1. **Hybrid retrieval** (vector search + BM25, fused with Reciprocal Rank Fusion, then reranked) — proven via adversarial testing to catch exact facts and reject semantically-similar-but-wrong matches that pure vector search misses.
+2. **Independent self-verification** — a second LLM call extracts every factual claim from the generated answer and checks it against the retrieved source text before the answer is shown. If a claim isn't supported, the system retries with a wider retrieval pass or flags it explicitly — it never silently ships an unverified claim.
+3. **Quantified, not just claimed** — evaluated with [Ragas](https://github.com/explodinggecko/ragas) (Faithfulness, Response Relevancy, Context Precision, Context Recall) and tracked across experiments in MLflow, with full execution traces in LangSmith.
+
+## Pipeline Workflow
+
+```mermaid
+flowchart TD
+    A[📄 PDF Upload] --> B[Extract Pages<br/>PyMuPDF]
+    B --> C[Section-Aware Chunking<br/>frequency-based heading detection]
+    C --> D[Embed Chunks<br/>bge-small-en-v1.5]
+    D --> E[(ChromaDB<br/>Vector Store)]
+
+    F[❓ User Question] --> G{Retrieve Node}
+    E --> G
+    G --> H[Vector Search]
+    G --> I[BM25 Keyword Search]
+    H --> J[Reciprocal Rank Fusion]
+    I --> J
+    J --> K[Cross-Encoder Rerank<br/>ms-marco-MiniLM]
+    K --> L{Chunks Found?}
+
+    L -- No --> M[Refuse:<br/>'Cannot answer from context']
+    L -- Yes --> N[Generate Node<br/>Groq LLM + citations]
+    N --> O[Verify Node<br/>independent claim-checking LLM]
+    O --> P{All Claims<br/>Supported?}
+    P -- No, retries left --> N
+    P -- No, out of retries --> Q[Flag Unsupported Claims]
+    P -- Yes --> R[✅ Final Verified Answer]
+
+    M --> S[Streamlit UI<br/>live animated pipeline view]
+    Q --> S
+    R --> S
+
+    style G fill:#818CF8,color:#fff
+    style N fill:#818CF8,color:#fff
+    style O fill:#C084FC,color:#fff
+    style R fill:#34D399,color:#000
+    style M fill:#94A3B8,color:#000
+```
+
+## Architecture
+
+| Stage | Component | Technology |
+|---|---|---|
+| 1 | Ingestion | PyMuPDF, custom frequency-based section chunking |
+| 2 | Embeddings + Vector Store | `bge-small-en-v1.5`, ChromaDB |
+| 3 | Generation | Groq (`openai/gpt-oss-120b`) |
+| 4 | Self-Verification | LangGraph state machine, independent judge LLM |
+| 5 | Hybrid Retrieval | BM25 + vector + RRF + cross-encoder reranking |
+| 6 | Config-Driven Pipeline | All tunables in `config.yaml` |
+| 7 | Evaluation | Ragas, MLflow, LangSmith |
+| 8 | UI | Streamlit, live pipeline visualization |
+| 9 | Deployment | Docker, GitHub Actions CI, AWS EC2 |
+
+## Evaluation Results
+
+Evaluated on 10 hand-verified questions against *"Attention Is All
+You Need"* (2 deliberately unanswerable, to test refusal behavior):
+
+| Metric | All 10 questions | 8 answerable only |
+|---|---|---|
+| Faithfulness | 0.685 | ~0.88 |
+| Response Relevancy | 0.734 | ~0.92 |
+| Context Precision | 0.780 | ~0.98 |
+| Context Recall | 1.000 | 1.00 |
+
+> Ragas scores a correctly-issued refusal as `0` across all metrics
+> (no claims exist to verify), which understates the blended
+> 10-question aggregate — restricted to the genuinely answerable
+> questions, scores are materially higher. Full methodology in
+> `PROJECT_SUMMARY.md`.
+
+Before/after comparison (vector-only vs. hybrid retrieval), logged in MLflow:
+
+| Metric | Vector-only | Hybrid + reranking |
+|---|---|---|
+| Faithfulness | 0.70 | 0.79 |
+| Context Recall | 0.80 | 1.00 |
+| Context Precision | 0.80 | 0.97 |
+| Response Relevancy | 0.76 | 0.96 |
 
 ## Setup
 
-1. **Clone & create a virtual environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate      # Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+```bash
+git clone https://github.com/Govindprasad1/ScholarCite-RAG.git
+cd ScholarCite-RAG
 
-2. **Set up API keys** (both free)
-   ```bash
-   cp .env.example .env
-   ```
-   - Groq key: https://console.groq.com/keys
-   - LangSmith key: https://smith.langchain.com/settings
+uv sync
+cp .env.example .env   # add your free GROQ_API_KEY (console.groq.com)
 
-   Fill both into `.env`.
-
-3. **Run tests** (mostly skipped until you build each stage)
-   ```bash
-   pytest tests/ -v
-   ```
-
-4. **Run the app** (once built)
-   ```bash
-   streamlit run app.py
-   ```
-
-   Or with Docker:
-   ```bash
-   docker compose up --build
-   ```
-
-## Build Order
-
-Follow this order — each stage is a real, working milestone, not just a step:
-
-| Stage | What | Files |
-|---|---|---|
-| 1 | PDF parsing + chunking | `src/ingestion/` |
-| 2 | Embeddings + vector store | `src/retrieval/embeddings.py`, `vector_store.py` |
-| 3 | Basic retrieve → generate chain | `src/llm/groq_client.py` |
-| 4 | LangGraph verification loop | `src/graph/` |
-| 5 | Hybrid search (BM25) + reranking | `src/retrieval/bm25_search.py`, `reranker.py` |
-| 6 | Config-driven pipeline | `config.yaml` (already scaffolded) |
-| 7 | LangSmith evaluation | `src/eval/langsmith_eval.py` |
-| — | MLflow experiment tracking | `src/eval/mlflow_tracking.py` |
-| 8 | Streamlit UI | `app.py` |
-| — | Docker + CI | `Dockerfile`, `.github/workflows/ci.yml` (already scaffolded) |
-| 9 | Deploy to HuggingFace Spaces | — |
-
-## Project Structure
-
-```
-scholarcite-rag/
-├── app.py                      # Streamlit entrypoint
-├── config.yaml                 # All tunable pipeline settings
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-├── .env.example
-├── .github/workflows/ci.yml    # Test-on-push CI
-├── src/
-│   ├── ingestion/               # Stage 1
-│   ├── retrieval/                # Stage 2, 5
-│   ├── graph/                    # Stage 4
-│   ├── llm/                      # Stage 3
-│   ├── eval/                     # Stage 7 + MLflow
-│   └── utils/                    # config loader, logger
-├── tests/                       # pytest, mirrors src/ structure
-├── data/
-│   ├── uploads/                  # gitignored — uploaded PDFs
-│   └── chroma_db/                 # gitignored — persisted vector store
-└── notebooks/                   # scratch space for prototyping each stage
+uv run streamlit run app.py
 ```
 
-## Notes on Free-Tier Constraints
-- Groq's free tier has request-rate limits — fine for demo/dev use, but
-  don't hammer it in tight test loops.
-- Embeddings and reranking run locally on CPU — fine for this project's
-  scale, just don't expect GPU-speed throughput.
+Or with Docker:
+```bash
+docker build -t scholarcite-rag .
+docker run -p 8501:8501 --env-file .env scholarcite-rag
+```
+
+## Running Tests / Evaluation
+
+```bash
+uv run pytest tests/ -v
+uv run python notebooks/run_stage7_eval.py data/uploads/your_paper.pdf
+mlflow ui   # view logged experiment runs
+```
+
+## Known Limitations
+
+- Section detection can occasionally misattribute footnote/front-matter text that falls between a detected header and the following content.
+- Inline subsection headings embedded mid-paragraph (common in dense 2-column academic PDFs) are not always separated from surrounding text — the system correctly refuses rather than answers incompletely in this case.
+- No OCR support — assumes text-based (not scanned) PDFs.
+- Single-document scope by design — no cross-document synthesis.
+- See `PROJECT_SUMMARY.md` for the full debugging history and every issue resolved during development.
+
+## Tech Stack
+
+Python · LangChain · LangGraph · LangSmith · Groq · ChromaDB · BM25 ·
+sentence-transformers · Ragas · MLflow · Streamlit · Docker · GitHub
+Actions · AWS EC2 · `uv`
+
+<!-- ============================================================= -->
