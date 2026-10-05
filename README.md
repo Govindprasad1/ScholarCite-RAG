@@ -14,7 +14,7 @@ fact-checked** by a second verification pass before you ever see
 it — built end-to-end on a free, open-source stack.
 
 ## 🔗 Live Demo
-**AWS EC2**: `http://52.64.241.245:8501/`
+**AWS EC2**: `http://52.64.241.245:8501`
 
 > Deployed on AWS EC2 (`t3.small`, 2GB RAM) rather than HuggingFace
 > Spaces or Streamlit Community Cloud, after evaluating both: HF now
