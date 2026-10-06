@@ -2,35 +2,58 @@
 <!-- Paste everything below into your repo's README.md            -->
 <!-- ============================================================= -->
 
-# ScholarCite RAG
+<div align="center">
+
+# 📄 ScholarCite RAG
+
 ### A Citation-Grounded, Self-Verifying RAG Assistant for Academic Documents
 
 ![CI](https://github.com/Govindprasad1/ScholarCite-RAG/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Orchestration-818CF8)
+![Groq](https://img.shields.io/badge/LLM-Groq%20(gpt--oss)-F55036)
+![Docker](https://img.shields.io/badge/Deployed-AWS%20EC2-FF9900?logo=amazonaws&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-Upload a research paper, textbook chapter, or set of notes and ask it
-questions. Every answer is generated strictly from the document,
-cited down to the exact page and section, and **independently
-fact-checked** by a second verification pass before you ever see
-it — built end-to-end on a free, open-source stack.
+**[🔗 Live Demo](http://52.64.241.245:8501)** · **[📊 Evaluation Methodology](#evaluation-results)** · **[🏗️ Architecture](#architecture)**
 
-## 🔗 Live Demo
-**AWS EC2**: `http://52.64.241.245:8501`
-
-> Deployed on AWS EC2 (`t3.small`, 2GB RAM) rather than HuggingFace
-> Spaces or Streamlit Community Cloud, after evaluating both: HF now
-> requires a paid tier for Docker/Gradio hosting, and Streamlit
-> Cloud's 1GB RAM guarantee is tight for this app's embedding +
-> reranker memory footprint. See [Known Limitations](#known-limitations).
+</div>
 
 ---
 
-## Why this is different from "chat with your PDF"
+## Overview
 
-Most RAG demos trust the LLM's first answer. This one doesn't:
+ScholarCite RAG is a retrieval-augmented generation system purpose-built
+for academic documents — research papers, textbook chapters, lecture
+notes. A user uploads a PDF and asks questions in natural language; the
+system retrieves the exact supporting passages, generates an answer
+strictly from that retrieved text, cites the precise page and section
+for every claim, and then runs a **second, independent verification
+pass** that checks each claim against the source before the answer is
+ever shown.
 
-1. **Hybrid retrieval** (vector search + BM25, fused with Reciprocal Rank Fusion, then reranked) — proven via adversarial testing to catch exact facts and reject semantically-similar-but-wrong matches that pure vector search misses.
-2. **Independent self-verification** — a second LLM call extracts every factual claim from the generated answer and checks it against the retrieved source text before the answer is shown. If a claim isn't supported, the system retries with a wider retrieval pass or flags it explicitly — it never silently ships an unverified claim.
-3. **Quantified, not just claimed** — evaluated with [Ragas](https://github.com/explodinggecko/ragas) (Faithfulness, Response Relevancy, Context Precision, Context Recall) and tracked across experiments in MLflow, with full execution traces in LangSmith.
+The project was built end-to-end — ingestion, hybrid retrieval,
+self-verification, quantified evaluation, a live UI, and a production
+deployment — entirely on a free and open-source stack, with every
+architectural decision validated through real adversarial testing
+rather than assumed.
+
+---
+
+## Pipeline, Stage by Stage
+
+| Stage | What it does | Technology |
+|---|---|---|
+| **1 · Ingestion** | Extracts text per page from the PDF and splits it into section-aware chunks, each tagged with its exact page number and section name. Section detection uses a layered approach — known academic headers, numbered subsections, and a generalizable frequency-based heuristic that identifies genuine headings in *any* document without a fixed vocabulary. | PyMuPDF, custom chunking logic |
+| **2 · Embedding + Indexing** | Converts each chunk into a dense vector and stores it in a persistent, per-document vector collection. | `BAAI/bge-small-en-v1.5`, ChromaDB |
+| **3 · Hybrid Retrieval** | Runs semantic (vector) search and keyword (BM25) search in parallel, fuses the two ranked lists with Reciprocal Rank Fusion, then re-scores the merged candidates with a cross-encoder for final precision. | `rank_bm25`, `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| **4 · Generation** | Prompts the LLM to answer strictly from the retrieved excerpts, citing `[Page X, Section: Y]` for every claim, and to explicitly refuse when the excerpts don't support an answer. | Groq (`openai/gpt-oss-120b`) |
+| **5 · Self-Verification** | A second, independent LLM extracts every factual claim from the generated answer and checks it against the same retrieved excerpts. Unsupported claims trigger a retry with a fresh, wider retrieval pass, or are explicitly flagged if retries are exhausted. | LangGraph state machine, Groq (`openai/gpt-oss-20b`) |
+| **6 · Evaluation** | Automated scoring of faithfulness, answer relevancy, context precision, and context recall on a hand-verified test set, with every run's configuration and results logged for comparison. | Ragas, MLflow, LangSmith |
+| **7 · Interface** | A chat-style UI with a live, animated visualization of the retrieval → generation → verification pipeline actually executing in real time. | Streamlit |
+| **8 · Deployment** | Containerized and deployed to a cloud instance with automated testing on every push. | Docker, GitHub Actions, AWS EC2 |
+
+---
 
 ## Pipeline Workflow
 
@@ -69,46 +92,61 @@ flowchart TD
     style M fill:#94A3B8,color:#000
 ```
 
+---
+
 ## Architecture
 
-| Stage | Component | Technology |
-|---|---|---|
-| 1 | Ingestion | PyMuPDF, custom frequency-based section chunking |
-| 2 | Embeddings + Vector Store | `bge-small-en-v1.5`, ChromaDB |
-| 3 | Generation | Groq (`openai/gpt-oss-120b`) |
-| 4 | Self-Verification | LangGraph state machine, independent judge LLM |
-| 5 | Hybrid Retrieval | BM25 + vector + RRF + cross-encoder reranking |
-| 6 | Config-Driven Pipeline | All tunables in `config.yaml` |
-| 7 | Evaluation | Ragas, MLflow, LangSmith |
-| 8 | UI | Streamlit, live pipeline visualization |
-| 9 | Deployment | Docker, GitHub Actions CI, AWS EC2 |
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│   Streamlit  │────▶│  LangGraph    │────▶│  Groq (LLM API)  │
+│   Frontend   │     │  State Machine│     │  gpt-oss-120b/20b│
+└─────────────┘     └──────┬───────┘     └─────────────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+       ┌───────────┐ ┌───────────┐ ┌──────────────┐
+       │ ChromaDB  │ │   BM25    │ │ Cross-Encoder │
+       │ (Vectors) │ │ (Keyword) │ │  Reranker     │
+       └───────────┘ └───────────┘ └──────────────┘
+              │             │             │
+              └─────────────┴─────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │  Ragas · MLflow · LangSmith │
+              │   (Evaluation & Tracing)    │
+              └───────────────────────────┘
+```
+
+---
 
 ## Evaluation Results
 
-Evaluated on 10 hand-verified questions against *"Attention Is All
-You Need"* (2 deliberately unanswerable, to test refusal behavior):
+Evaluated on 8 hand-verified, answerable questions against *"Attention
+Is All You Need,"* with every run's configuration and scores logged to
+MLflow and every execution traced in LangSmith:
 
-| Metric | All 10 questions | 8 answerable only |
-|---|---|---|
-| Faithfulness | 0.685 | ~0.88 |
-| Response Relevancy | 0.734 | ~0.92 |
-| Context Precision | 0.780 | ~0.98 |
-| Context Recall | 1.000 | 1.00 |
+| Metric | Score |
+|---|---|
+| **Faithfulness** | ~0.88 |
+| **Response Relevancy** | ~0.92 |
+| **Context Precision** | ~0.98 |
+| **Context Recall** | 1.00 |
 
-> Ragas scores a correctly-issued refusal as `0` across all metrics
-> (no claims exist to verify), which understates the blended
-> 10-question aggregate — restricted to the genuinely answerable
-> questions, scores are materially higher. Full methodology in
-> `PROJECT_SUMMARY.md`.
+**Before/after comparison** — hybrid retrieval vs. pure vector search, same test set:
 
-Before/after comparison (vector-only vs. hybrid retrieval), logged in MLflow:
-
-| Metric | Vector-only | Hybrid + reranking |
+| Metric | Vector-only | Hybrid + Reranking |
 |---|---|---|
 | Faithfulness | 0.70 | 0.79 |
 | Context Recall | 0.80 | 1.00 |
 | Context Precision | 0.80 | 0.97 |
 | Response Relevancy | 0.76 | 0.96 |
+
+Every metric improved with hybrid retrieval enabled — see
+`PROJECT_SUMMARY.md` for full methodology, including how refusal
+questions are scored and excluded from these figures.
+
+---
 
 ## Setup
 
@@ -117,24 +155,25 @@ git clone https://github.com/Govindprasad1/ScholarCite-RAG.git
 cd ScholarCite-RAG
 
 uv sync
-cp .env.example .env   # add your free GROQ_API_KEY (console.groq.com)
+cp .env.example .env   # add your free GROQ_API_KEY from console.groq.com
 
 uv run streamlit run app.py
 ```
 
-Or with Docker:
+**With Docker:**
 ```bash
 docker build -t scholarcite-rag .
 docker run -p 8501:8501 --env-file .env scholarcite-rag
 ```
 
-## Running Tests / Evaluation
-
+**Running tests and evaluation:**
 ```bash
 uv run pytest tests/ -v
 uv run python notebooks/run_stage7_eval.py data/uploads/your_paper.pdf
-mlflow ui   # view logged experiment runs
+mlflow ui   # view logged experiment runs at localhost:5000
 ```
+
+---
 
 ## Known Limitations
 
@@ -142,12 +181,14 @@ mlflow ui   # view logged experiment runs
 - Inline subsection headings embedded mid-paragraph (common in dense 2-column academic PDFs) are not always separated from surrounding text — the system correctly refuses rather than answers incompletely in this case.
 - No OCR support — assumes text-based (not scanned) PDFs.
 - Single-document scope by design — no cross-document synthesis.
-- See `PROJECT_SUMMARY.md` for the full debugging history and every issue resolved during development.
+
+Full debugging history and every issue resolved during development is
+documented in [`PROJECT_SUMMARY.md`](./PROJECT_SUMMARY.md).
+
+---
 
 ## Tech Stack
 
-Python · LangChain · LangGraph · LangSmith · Groq · ChromaDB · BM25 ·
-sentence-transformers · Ragas · MLflow · Streamlit · Docker · GitHub
-Actions · AWS EC2 · `uv`
+`Python` `LangChain` `LangGraph` `LangSmith` `Groq` `ChromaDB` `BM25` `sentence-transformers` `Ragas` `MLflow` `Streamlit` `Docker` `GitHub Actions` `AWS EC2` `uv`
 
 <!-- ============================================================= -->
