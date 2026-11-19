@@ -49,7 +49,7 @@ rather than assumed.
 | **3 · Hybrid Retrieval** | Runs semantic (vector) search and keyword (BM25) search in parallel, fuses the two ranked lists with Reciprocal Rank Fusion, then re-scores the merged candidates with a cross-encoder for final precision. | `rank_bm25`, `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | **4 · Generation** | Prompts the LLM to answer strictly from the retrieved excerpts, citing `[Page X, Section: Y]` for every claim, and to explicitly refuse when the excerpts don't support an answer. | Groq (`openai/gpt-oss-120b`) |
 | **5 · Self-Verification** | A second, independent LLM extracts every factual claim from the generated answer and checks it against the same retrieved excerpts. Unsupported claims trigger a retry with a fresh, wider retrieval pass, or are explicitly flagged if retries are exhausted. | LangGraph state machine, Groq (`openai/gpt-oss-20b`) |
-| **6 · Evaluation** | Automated scoring of faithfulness, answer relevancy, context precision, and context recall on a hand-verified test set, with every run's configuration and results logged for comparison. | Ragas, MLflow, LangSmith |
+| **6 · Evaluation** | Automated scoring of faithfullness, answer relevancy, context precision, and context recall on a hand-verified test set, with every run's configuration and results logged for comparison. | Ragas, MLflow, LangSmith |
 | **7 · Interface** | A chat-style UI with a live, animated visualization of the retrieval → generation → verification pipeline actually executing in real time. | Streamlit |
 | **8 · Deployment** | Containerized and deployed to a cloud instance with automated testing on every push. | Docker, GitHub Actions, AWS EC2 |
 
