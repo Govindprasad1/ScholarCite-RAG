@@ -138,8 +138,8 @@ MLflow and every execution traced in LangSmith:
 | Metric | Vector-only | Hybrid + Reranking |
 |---|---|---|
 | Faithfulness | 0.70 | 0.79 |
-| Context Recall | 0.80 | 1.00 |
-| Context Precision | 0.80 | 0.97 |
+| Context Recall | 0.82 | 0.97 |
+| Context Precision | 0.80 | 0.95 |
 | Response Relevancy | 0.76 | 0.96 |
 
 Every metric improved with hybrid retrieval enabled — see
