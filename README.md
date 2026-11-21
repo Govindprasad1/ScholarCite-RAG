@@ -130,8 +130,8 @@ MLflow and every execution traced in LangSmith:
 |---|---|
 | **Faithfulness** | ~0.88 |
 | **Response Relevancy** | ~0.92 |
-| **Context Precision** | ~0.98 |
-| **Context Recall** | 1.00 |
+| **Context Precision** | ~0.95 |
+| **Context Recall** | 0.97 |
 
 **Before/after comparison** — hybrid retrieval vs. pure vector search, same test set:
 
